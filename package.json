@@ -21,7 +21,8 @@
   "homepage": "https://github.com/LukeRowell/Trivia-Bot#readme",
   "dependencies": {
     "discord.js": "^11.5.1",
-    "dotenv": "^8.2.0"
+    "dotenv": "^8.2.0",
+    "pg": "^7.18.1"
   },
   "devDependencies": {
     "nodemon": "^2.0.2"
