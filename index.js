@@ -5,7 +5,7 @@ const Discord = require('discord.js');
 const he = require('he');
 const client = new Discord.Client();
 
-const db_url = "";
+const db_url = "postgres://haxrmdohtdpejz:5acd0ec4ab5be0cb9e3016bd47a9763576cdce4e73b66298a89fa7e8a3838983@ec2-23-23-92-204.compute-1.amazonaws.com:5432/d1gavj00p2427f";
 
 async function queryDB(dbConnectionString, queryText, queryValues) {
     const pool = new Pool({
@@ -60,9 +60,27 @@ client.on('message', async(msg) => {
         const server_name = msg.member.guild.name;
 
         if (words[1] === 'about') {
-            msg.reply("About test");
+            msg.channel.send("Trivia Bot by Luke Rowell\nPowered by Open Trivia Database: https://opentdb.com/\nSource: https://github.com/LukeRowell/Trivia-Bot");
         } else if (words[1] === 'answer') {
-            msg.reply("Answer test");
+            if (words[2] == null) {
+                msg.channel.send("No answer given. To answer type \"!trivia answer\" followed by the letter of your choice.");
+            } else {
+                const queryText = `SELECT answering FROM trivia WHERE username = $1 AND server_name = $2;`;
+                const queryValues = ['test_name', 'test_server'];
+                const result = await queryDB(db_url, queryText, queryValues);
+
+                console.log(result.rows[0]);
+
+                if (result.rows.length > 0) {
+                    if (result.rows[0]) {
+                        msg.channel.send("You are currently answering a question.");
+                    } else {
+                        msg.channel.send("You aren't currently answering a question! Type \"!trivia question\" to get a question.");
+                    }
+                } else {
+                    msg.channel.send("You aren't currently answering a question! Type \"!trivia question\" to get a question.")
+                }
+            }
         } else if (words[1] === 'help' || words[1] === 'commands') {
             let helpMessageString = `**Command format:** !trivia your_command_here\n\n__Commands__:\nabout - Displays information about Trivia Bot.\nanswer - Answer the current question.\nhelp/commands - Get a list of commands for Trivia Bot.\nhowto/rules - Explains rules and how Trivia Bot works.\nleaderboard - Shows the leaderboard for this server.\npoints - Shows you your current point total in this server.\nquestion - Get a new question to answer.`;
             msg.channel.send(helpMessageString);
@@ -74,7 +92,7 @@ client.on('message', async(msg) => {
             const queryValues = [server_name];
             const result = await queryDB(db_url, queryText, queryValues);
 
-            if (result.rows > 0) {
+            if (result.rows.length > 0) {
                 let leaderboardMessageString = `🏆 Galaxy Brains of ${server_name} 🏆\n\n`;
                 let placeString;
                 let nameString;
@@ -115,68 +133,60 @@ client.on('message', async(msg) => {
                 msg.reply(`Your total points in ${server_name}: ${result.rows[0]}`);
             }
         } else if (words[1] === 'question') {
-            const opentdb_response = await fetch('https://opentdb.com/api.php?amount=1');
-            const opentdb_response_json = await opentdb_response.json();
-            const category = opentdb_response_json.results[0].category;
-            const question_type = opentdb_response_json.results[0].type;
-            const difficulty = opentdb_response_json.results[0].difficulty;
-            const question = he.decode(opentdb_response_json.results[0].question);
-            const correct_answer = he.decode(opentdb_response_json.results[0].correct_answer);
-            let answers = (opentdb_response_json.results[0].incorrect_answers).map(x => he.decode(x));
-
-            answers.push(correct_answer);
-            answers = shuffle(answers);
-
-            console.log('Category: ' + category);
-            console.log('Question Type: ' + question_type);
-            console.log('Difficulty: ' + difficulty);
-            console.log('Question: ' + question);
-            console.log('Correct Answer: ' + correct_answer);
-            console.log('Answers: ' + answers);
-            /*
-            const queryText = `SELECT answering FROM trivia WHERE username = $1 AND server_name = $2;`;
+            const queryText = `SELECT * FROM trivia WHERE username = $1 AND server_name = $2;`;
             const queryValues = [username, server_name];
             const result = await queryDB(db_url, queryText, queryValues);
 
-            if (result.rows.length == 0) {     //user has no record in this server
-                const queryText = ``
-            } else {    //user does have a record in this server
-                
+            if (result.rows.length > 0) {   //If there is some data for this user
+                const answering = result.rows[0][10];
+                if (answering) {   //If the user is currently answering a question, give them the information about their current question
+                    const category = result.rows[0][2];
+                    const question_type = result.rows[0][3];
+                    const difficulty = result.rows[0][4];
+                    const question = result.rows[0][5];
+                    const answers = result.rows[0][6];
+                    msg.reply(`\n__Your current question__:\nCategory: ${category}\nQuestion Type: ${question_type}\nDifficulty: ${difficulty}\n\nQuestion: ${question}\n\n${answers}`);
+                } else {    //If the user is not currently answering a question, give them a new one
+                    msg.channel.send("Here's a new question.");
+                }
+            } else {    //If there is no data for this user, get them their first question
+                const opentdb_response = await fetch('https://opentdb.com/api.php?amount=1');
+                const opentdb_response_json = await opentdb_response.json();
+                const category = opentdb_response_json.results[0].category;
+                const question_type = he.decode(opentdb_response_json.results[0].type);
+                const difficulty = opentdb_response_json.results[0].difficulty;
+                const question = he.decode(opentdb_response_json.results[0].question);
+                const correct_answer = he.decode(opentdb_response_json.results[0].correct_answer);
+                let answers = (opentdb_response_json.results[0].incorrect_answers).map(x => he.decode(x));
+                let correct_answer_index;
+
+                answers.push(correct_answer);
+                answers = shuffle(answers);
+
+                for (const [index, answer] of answers.entries()) {
+                    if (answer === correct_answer) {
+                        correct_answer_index = index;
+                        console.log("Index of correct answer: ", correct_answer_index);
+                    }
+                }
+
+                const queryText = `INSERT INTO trivia VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, to_timestamp(${Date.now()} / 1000.0));`;
+                const queryValues = [username, server_name, category, question_type, difficulty, question, answers, correct_answer_index, 0, 't'];
+                await queryDB(db_url, queryText, queryValues);
+
+                console.log('Category: ' + category);
+                console.log('Question Type: ' + question_type);
+                console.log('Difficulty: ' + difficulty);
+                console.log('Question: ' + question);
+                console.log('Correct Answer: ' + correct_answer);
+                console.log('Answers: ' + answers);
             }
-            msg.reply("Question");
-            */
+
         } else {
             msg.channel.send("Sorry, I didn't recognize that command. Type \"!trivia help\" for a list of commands.");
             console.log(username);
             console.log(server_name);
         }
-        /*const queryText = `SELECT * FROM pokemon WHERE name = $1;`;
-        const queryValues = [`bulbasaur`];
-        const result = await queryDB(db_url, queryText, queryValues);
-        let formattedResults = [];
-
-        for (item of result.rows) {
-            const entry = {
-                name: item[0],
-                ndexno: item[1], 
-                generation: item[2],
-                type1: item[3],
-                type2: item[4],
-                hp: item[5],
-                atk: item[6],
-                def: item[7],
-                spatk: item[8],
-                spdef: item[9],
-                spd: item[10],
-                total: item[11],
-                bulba_name: item[12]
-            }
-
-            formattedResults.push(entry);
-        }
-
-        console.log(msg.member);
-        msg.reply(formattedResults[0].name);*/
     }
 })
 
