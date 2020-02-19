@@ -5,7 +5,7 @@ const Discord = require('discord.js');
 const he = require('he');
 const client = new Discord.Client();
 
-const db_url = "";
+const db_url = "postgres://haxrmdohtdpejz:5acd0ec4ab5be0cb9e3016bd47a9763576cdce4e73b66298a89fa7e8a3838983@ec2-23-23-92-204.compute-1.amazonaws.com:5432/d1gavj00p2427f";
 
 async function queryDB(dbConnectionString, queryText, queryValues) {
     const pool = new Pool({
@@ -65,15 +65,67 @@ client.on('message', async(msg) => {
             if (words[2] == null) {
                 msg.channel.send("No answer given. To answer type \"!trivia answer\" followed by the letter of your choice.");
             } else {
-                const queryText = `SELECT answering FROM trivia WHERE username = $1 AND server_name = $2;`;
-                const queryValues = ['test_name', 'test_server'];
+                const queryText = `SELECT * FROM trivia WHERE username = $1 AND server_name = $2;`;
+                const queryValues = [username, server_name];
                 const result = await queryDB(db_url, queryText, queryValues);
-
-                console.log(result.rows[0]);
+                const user_answer = words[2];
 
                 if (result.rows.length > 0) {
-                    if (result.rows[0]) {
-                        msg.channel.send("You are currently answering a question.");
+                    const category = result.rows[0][2];
+                    const question_type = result.rows[0][3];
+                    const difficulty = result.rows[0][4];
+                    const question = result.rows[0][5];
+                    const correct_answer_index = result.rows[0][7];
+                    const points = result.rows[0][8];
+                    const answering = result.rows[0][9];
+                    let user_answer_index;
+                    let answer_supplied = false;
+
+                    if (answering) {
+                        if (user_answer === 'A' || user_answer === 'a') {
+                            user_answer_index = 0;
+                            answer_supplied = true;
+                        } else if (user_answer === 'B' || user_answer === 'b') {
+                            user_answer_index = 1;
+                            answer_supplied = true;
+                        } else if (user_answer === 'C' || user_answer === 'c') {
+                            user_answer_index = 2;
+                            answer_supplied = true;
+                        } else if (user_answer === 'D' || user_answer === 'd') {
+                            user_answer_index = 3;
+                            answer_supplied = true;
+                        } else {
+                            msg.reply("Sorry, I didn't recognize that answer. Please answer with the letter of your choice.");
+                        }
+
+                        if (answer_supplied && (user_answer_index == 2 || user_answer_index == 3) && question_type === 'boolean') {     //If the supplied answer is C or D for a True/False question
+                            answer_supplied = false;
+                            msg.reply("Sorry, I didn't recognize that answer. Please answer with the letter of your choice.");
+                        } else if (answer_supplied) {
+                            let point_value;
+                            let replyString;
+
+                            if (difficulty === "easy") {
+                                point_value = 100;
+                            } else if (difficulty === "medium") {
+                                point_value = 300;
+                            } else if (difficulty === "hard") {
+                                point_value = 500;
+                            }
+
+                            if (user_answer_index == correct_answer_index) {    //If the answer was correct
+                                replyString = `\nCorrect!\nPoints earned: ${point_value}\nTotal points: ${points + point_value}`;
+                            } else {    //If the answer was incorrect
+                                point_value *= -1;
+                                replyString = `\nSorry, wrong answer. Better luck next time!\nPoints lost: ${point_value}\nTotal points: ${points + point_value}`;
+                            }
+
+                            const queryText = `UPDATE trivia SET points = points + ${point_value}, answering = $1 WHERE username = $2 AND server_name = $3;`;
+                            const queryValues = ['f', username, server_name];
+                            await queryDB(db_url, queryText, queryValues);
+
+                            msg.reply(replyString);
+                        }
                     } else {
                         msg.channel.send("You aren't currently answering a question! Type \"!trivia question\" to get a question.");
                     }
@@ -138,17 +190,49 @@ client.on('message', async(msg) => {
             const result = await queryDB(db_url, queryText, queryValues);
 
             if (result.rows.length > 0) {   //If there is some data for this user
-                const answering = result.rows[0][10];
+                const answering = result.rows[0][9];
                 if (answering) {   //If the user is currently answering a question, give them the information about their current question
                     const category = result.rows[0][2];
                     const question_type = result.rows[0][3];
                     const difficulty = result.rows[0][4];
                     const question = result.rows[0][5];
                     const answers = result.rows[0][6];
-                    msg.reply(`\n__Your current question__:\nCategory: ${category}\nQuestion Type: ${question_type}\nDifficulty: ${difficulty}\n\nQuestion: ${question}\n\n${answers}`);
+                    
+                    if (question_type === 'boolean') {
+                        msg.reply(`\n__Your current question__:\nCategory: ${category}\nQuestion Type: ${question_type}\nDifficulty: ${difficulty}\n\nQuestion: ${question}\n\nA) ${answers[0]}\nB) ${answers[1]}`);
+                    } else {
+                        msg.reply(`\n__Your current question__:\nCategory: ${category}\nQuestion Type: ${question_type}\nDifficulty: ${difficulty}\n\nQuestion: ${question}\n\nA) ${answers[0]}\nB) ${answers[1]}\nC) ${answers[2]}\nD) ${answers[3]}`);
+                    }
                 } else {    //If the user is not currently answering a question, give them a new one
-                    msg.channel.send("Here's a new question.");
-                }
+                    const opentdb_response = await fetch('https://opentdb.com/api.php?amount=1');
+                    const opentdb_response_json = await opentdb_response.json();
+                    const category = opentdb_response_json.results[0].category;
+                    const question_type = he.decode(opentdb_response_json.results[0].type);
+                    const difficulty = opentdb_response_json.results[0].difficulty;
+                    const question = he.decode(opentdb_response_json.results[0].question);
+                    const correct_answer = he.decode(opentdb_response_json.results[0].correct_answer);
+                    let answers = (opentdb_response_json.results[0].incorrect_answers).map(x => he.decode(x));
+                    let correct_answer_index;
+    
+                    answers.push(correct_answer);
+                    answers = shuffle(answers);
+
+                    for (const [index, answer] of answers.entries()) {
+                        if (answer === correct_answer) {
+                            correct_answer_index = index;
+                            console.log("Index of correct answer: ", correct_answer_index);
+                        }
+                    }
+
+                    const queryText = `UPDATE trivia SET category = $1, question_type = $2, difficulty = $3, question = $4, answers = $5, correct_answer_index = $6, answering = $7, checkout_time = to_timestamp(${Date.now()} / 1000.0) WHERE username = $8 AND server_name = $9;`;
+                    const queryValues = [category, question_type, difficulty, question, answers, correct_answer_index, 't', username, server_name];
+                    await queryDB(db_url, queryText, queryValues);
+
+                    if (question_type === 'boolean') {
+                        msg.reply(`\n__Your current question__:\nCategory: ${category}\nQuestion Type: ${question_type}\nDifficulty: ${difficulty}\n\nQuestion: ${question}\n\nA) ${answers[0]}\nB) ${answers[1]}`);
+                    } else {
+                        msg.reply(`\n__Your current question__:\nCategory: ${category}\nQuestion Type: ${question_type}\nDifficulty: ${difficulty}\n\nQuestion: ${question}\n\nA) ${answers[0]}\nB) ${answers[1]}\nC) ${answers[2]}\nD) ${answers[3]}`);
+                    }                }
             } else {    //If there is no data for this user, get them their first question
                 const opentdb_response = await fetch('https://opentdb.com/api.php?amount=1');
                 const opentdb_response_json = await opentdb_response.json();
@@ -174,6 +258,12 @@ client.on('message', async(msg) => {
                 const queryValues = [username, server_name, category, question_type, difficulty, question, answers, correct_answer_index, 0, 't'];
                 await queryDB(db_url, queryText, queryValues);
 
+                if (question_type === 'boolean') {
+                    msg.reply(`\n__Your current question__:\nCategory: ${category}\nQuestion Type: ${question_type}\nDifficulty: ${difficulty}\n\nQuestion: ${question}\n\nA) ${answers[0]}\nB) ${answers[1]}`);
+                } else {
+                    msg.reply(`\n__Your current question__:\nCategory: ${category}\nQuestion Type: ${question_type}\nDifficulty: ${difficulty}\n\nQuestion: ${question}\n\nA) ${answers[0]}\nB) ${answers[1]}\nC) ${answers[2]}\nD) ${answers[3]}`);
+                }      
+                
                 console.log('Category: ' + category);
                 console.log('Question Type: ' + question_type);
                 console.log('Difficulty: ' + difficulty);
@@ -186,6 +276,7 @@ client.on('message', async(msg) => {
             msg.channel.send("Sorry, I didn't recognize that command. Type \"!trivia help\" for a list of commands.");
             console.log(username);
             console.log(server_name);
+            console.log(msg.member);
         }
     }
 })
