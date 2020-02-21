@@ -5,7 +5,7 @@ const Discord = require('discord.js');
 const he = require('he');
 const client = new Discord.Client();
 
-const db_url = "";
+const db_url = process.env.DATABASE_URL;
 
 async function queryDB(dbConnectionString, queryText, queryValues) {
     const pool = new Pool({
@@ -220,7 +220,6 @@ client.on('message', async(msg) => {
                     for (const [index, answer] of answers.entries()) {
                         if (answer === correct_answer) {
                             correct_answer_index = index;
-                            console.log("Index of correct answer: ", correct_answer_index);
                         }
                     }
 
@@ -250,7 +249,6 @@ client.on('message', async(msg) => {
                 for (const [index, answer] of answers.entries()) {
                     if (answer === correct_answer) {
                         correct_answer_index = index;
-                        console.log("Index of correct answer: ", correct_answer_index);
                     }
                 }
 
@@ -263,20 +261,9 @@ client.on('message', async(msg) => {
                 } else {
                     msg.reply(`\n__Your current question__:\nCategory: ${category}\nQuestion Type: ${question_type}\nDifficulty: ${difficulty}\n\nQuestion: ${question}\n\nA) ${answers[0]}\nB) ${answers[1]}\nC) ${answers[2]}\nD) ${answers[3]}`);
                 }      
-
-                console.log('Category: ' + category);
-                console.log('Question Type: ' + question_type);
-                console.log('Difficulty: ' + difficulty);
-                console.log('Question: ' + question);
-                console.log('Correct Answer: ' + correct_answer);
-                console.log('Answers: ' + answers);
             }
-
         } else {
             msg.channel.send("Sorry, I didn't recognize that command. Type \"!trivia help\" for a list of commands.");
-            console.log(username);
-            console.log(server_name);
-            console.log(msg.member);
         }
     }
 })
