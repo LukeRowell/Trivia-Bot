@@ -1,11 +1,13 @@
+const express = require('express');
 require('dotenv').config();
 const fetch = require('node-fetch');
 const { Pool } = require('pg');
 const Discord = require('discord.js');
 const he = require('he');
 const client = new Discord.Client();
+const app = express();
 const port = process.env.PORT || 5000;
-const db_url = process.env.DATABASE_URL;
+const db_url = "postgres://haxrmdohtdpejz:5acd0ec4ab5be0cb9e3016bd47a9763576cdce4e73b66298a89fa7e8a3838983@ec2-23-23-92-204.compute-1.amazonaws.com:5432/d1gavj00p2427f";
 
 async function queryDB(dbConnectionString, queryText, queryValues) {
     const pool = new Pool({
