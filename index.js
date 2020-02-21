@@ -4,7 +4,7 @@ const { Pool } = require('pg');
 const Discord = require('discord.js');
 const he = require('he');
 const client = new Discord.Client();
-
+const port = process.env.PORT || 5000;
 const db_url = process.env.DATABASE_URL;
 
 async function queryDB(dbConnectionString, queryText, queryValues) {
@@ -268,4 +268,7 @@ client.on('message', async(msg) => {
     }
 })
 
-client.login(process.env.BOT_TOKEN);
+app.listen(port, () => {                        //start the server on supplied port or port 3000 if none supplied
+    console.log(`Starting server at ${port}`);
+    client.login(process.env.BOT_TOKEN);
+});
