@@ -272,5 +272,6 @@ client.on('message', async(msg) => {
 
 app.listen(port, () => {                        //start the server on supplied port or port 3000 if none supplied
     console.log(`Starting server at ${port}`);
-    client.login(process.env.BOT_TOKEN);
 });
+
+client.login(process.env.BOT_TOKEN);
